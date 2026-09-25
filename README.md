@@ -37,7 +37,7 @@ Zusätzlich gibt es einen **Snippet-Manager** für Texte die du immer wieder bra
 | Panel schließen | `Esc` |
 | Navigieren | `↑` `↓` |
 | Einfügen | `↩ Return` |
-| Eintrag markieren | `Leertaste` |
+| Eintrag markieren | `Leertaste` (bei leerer Suche) |
 | Mehrfachauswahl | `⌘ + Klick` |
 
 ---
@@ -83,6 +83,12 @@ Voraussetzung: Xcode Command Line Tools (`xcode-select --install`)
 ---
 
 ## Changelog
+
+### Version 1.2.3
+- Fix: Pfeiltasten funktionieren jetzt sofort nach dem Öffnen des Panels, auch bei fokussierter Suche (kein Tab-Wechsel mehr nötig)
+- Die Suche wird beim Öffnen und beim Zurückwechseln auf „Verlauf“ zuverlässig fokussiert
+- `Return` fügt auf dem Snippets-Tab keinen Verlaufseintrag mehr ein
+- Leertaste markiert nur noch bei leerer Suche, sonst wird ein Leerzeichen getippt
 
 ### Version 1.2.2
 - Autocomplete für Projekt und Tags im Snippet-Formular

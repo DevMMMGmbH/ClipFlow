@@ -7,6 +7,12 @@ final class PanelState: ObservableObject {
     }
     @Published var selectedIDs: Set<UUID> = []
     @Published var highlightedIndex: Int = 0
+    /// Wird bei jedem Öffnen erhöht — die Ansicht fokussiert daraufhin die Suche.
+    @Published var searchFocusToken: Int = 0
+
+    /// Vom PanelView gesetzt: true, solange die Verlaufsliste bedienbar ist
+    /// (Verlaufs-Tab sichtbar, nicht eingeklappt, keine Hilfe, kein Overlay-Formular).
+    var listNavigationActive = false
 
     private var cancellable: AnyCancellable?
 
@@ -34,6 +40,8 @@ final class PanelState: ObservableObject {
 
     func highlightedItem() -> ClipboardItem? { filteredItems[safe: highlightedIndex] }
     func selectedItems() -> [ClipboardItem]  { filteredItems.filter { selectedIDs.contains($0.id) } }
+
+    func requestSearchFocus() { searchFocusToken += 1 }
 
     func reset() {
         searchText = ""

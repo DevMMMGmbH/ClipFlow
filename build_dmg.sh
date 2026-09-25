@@ -6,13 +6,13 @@
 #   chmod +x build_dmg.sh
 #   ./build_dmg.sh
 #
-# Ergebnis: ClipFlow-1.2.dmg im Projektverzeichnis
+# Ergebnis: ClipFlow-1.2.3.dmg im Projektverzeichnis
 # ---------------------------------------------------------------------------
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VERSION="1.2"
+VERSION="1.2.3"
 APP_NAME="ClipFlow"
 BUNDLE_ID="local.misgin.clipflow"
 DMG_NAME="${APP_NAME}-${VERSION}.dmg"

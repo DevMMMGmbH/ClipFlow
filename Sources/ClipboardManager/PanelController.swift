@@ -17,6 +17,7 @@ final class PanelController {
     func open() {
         previousApp = NSWorkspace.shared.frontmostApplication
         state.reset()
+        state.requestSearchFocus()
 
         if panel == nil { buildPanel() }
         centerOnScreen()
@@ -48,9 +49,9 @@ final class PanelController {
         p.onEscape = { [weak self] in self?.close() }
 
         // Tastatur-Events auf Panel-Ebene abfangen — vor dem SwiftUI-Responder
-        p.keyHandler = { [weak self] event -> Bool in
+        p.keyHandler = { [weak self] event, inTextInput -> Bool in
             guard let self else { return false }
-            return self.handleKey(event)
+            return self.handleKey(event, inTextInput: inTextInput)
         }
 
         p.backgroundColor = .clear
@@ -84,13 +85,21 @@ final class PanelController {
 
     // MARK: - Key Handling
 
-    private func handleKey(_ event: NSEvent) -> Bool {
+    private func handleKey(_ event: NSEvent, inTextInput: Bool) -> Bool {
+        if event.keyCode == 53 { close(); return true }  // Esc
+
+        // Snippets-Tab, Hilfe und Formulare: die Tasten gehören dem fokussierten Feld
+        guard state.listNavigationActive else { return false }
+
         switch event.keyCode {
-        case 125: state.moveDown();        return true  // ↓
-        case 126: state.moveUp();          return true  // ↑
-        case 49:  state.toggleHighlighted(); return true // Leertaste
-        case 36, 76: pasteSelection();     return true  // Return / Enter
-        case 53:  close();                 return true  // Esc
+        case 125: state.moveDown();          return true  // ↓
+        case 126: state.moveUp();            return true  // ↑
+        case 36, 76: pasteSelection();       return true  // Return / Enter
+        case 49:                                          // Leertaste
+            // In der Suche ist Leertaste ein normales Zeichen — außer das Feld ist noch leer
+            guard !inTextInput || state.searchText.isEmpty else { return false }
+            state.toggleHighlighted()
+            return true
         default:  return false
         }
     }
@@ -177,7 +186,7 @@ final class PanelController {
 
 final class ClipboardPanel: NSPanel {
     var onEscape: (() -> Void)?
-    var keyHandler: ((NSEvent) -> Bool)?
+    var keyHandler: ((NSEvent, _ inTextInput: Bool) -> Bool)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -187,12 +196,14 @@ final class ClipboardPanel: NSPanel {
     }
 
     // sendEvent läuft VOR jedem Responder — auch dem SwiftUI TextField.
-    // Wenn ein Textfeld fokussiert ist, alle Events direkt durchlassen (Paste, Enter etc.)
+    // Der Handler bekommt mit, ob gerade ein Textfeld fokussiert ist, und entscheidet selbst,
+    // welche Tasten er übernimmt (Pfeile/Enter auch bei fokussierter Suche, Tippen bleibt beim Feld).
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown {
-            let responder = firstResponder
-            let isTextField = responder is NSTextView || responder is NSTextField
-            if !isTextField, keyHandler?(event) == true { return }
+            let editor = firstResponder as? NSTextView
+            let inTextInput = editor != nil || firstResponder is NSTextField
+            // Bei Akzent-/IME-Eingabe (markierter Text) gehören alle Tasten dem Textfeld
+            if editor?.hasMarkedText() != true, keyHandler?(event, inTextInput) == true { return }
         }
         super.sendEvent(event)
     }

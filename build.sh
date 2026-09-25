@@ -33,9 +33,9 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
     <key>CFBundleName</key>
     <string>ClipFlow</string>
     <key>CFBundleVersion</key>
-    <string>1.1</string>
+    <string>1.2.3</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.1</string>
+    <string>1.2.3</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSPrincipalClass</key>

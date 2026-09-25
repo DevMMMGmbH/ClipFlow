@@ -45,7 +45,10 @@ struct PanelView: View {
         }
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .onAppear { searchFocused = true }
+        .onChange(of: listNavigationActive, initial: true) { _, active in
+            state.listNavigationActive = active
+        }
+        .onChange(of: state.searchFocusToken) { _, _ in focusSearchField() }
         .overlay {
             if let item = saveAsSnippetItem, let text = item.text {
                 AddSnippetOverlay(
@@ -60,6 +63,20 @@ struct PanelView: View {
                     saveAsSnippetItem = nil
                 }
             }
+        }
+    }
+
+    // MARK: - Focus
+
+    /// Pfeiltasten/Enter/Leertaste steuern nur die Verlaufsliste, solange diese wirklich bedienbar ist.
+    private var listNavigationActive: Bool {
+        activeTab == .history && !isCollapsed && !showHelp && saveAsSnippetItem == nil
+    }
+
+    private func focusSearchField() {
+        // Einen Tick warten: direkt nach dem Einblenden ist das Feld noch nicht im Responder-Chain
+        DispatchQueue.main.async {
+            if listNavigationActive { searchFocused = true }
         }
     }
 
@@ -203,7 +220,7 @@ struct PanelView: View {
                 Divider().padding(.horizontal, 20).padding(.vertical, 6)
 
                 shortcutSection(header: "Mehrfachauswahl") {
-                    shortcutRow("Leertaste",   "Eintrag markieren / entmarkieren")
+                    shortcutRow("Leertaste",   "Eintrag markieren (bei leerer Suche)")
                     shortcutRow("⌘ + Klick",   "Zusätzlichen Eintrag wählen")
                     shortcutRow("↩ Return",    "Alle markierten Einträge einfügen")
                 }
@@ -267,6 +284,7 @@ struct PanelView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .focused($searchFocused)
+                .onAppear { focusSearchField() }
             if !state.searchText.isEmpty {
                 Button {
                     state.searchText = ""
