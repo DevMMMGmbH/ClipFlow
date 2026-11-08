@@ -6,6 +6,7 @@ enum PanelTab { case history, snippets }
 struct PanelView: View {
     @ObservedObject var state: PanelState
     var onPaste: ([ClipboardItem]) -> Void
+    var onPasteToApp: (NSRunningApplication) -> Void
     var onSnippetPaste: (String) -> Void
     var onClose: () -> Void
     var onCollapse: ((Bool) -> Void)?
@@ -33,6 +34,10 @@ struct PanelView: View {
                         } else {
                             itemList
                         }
+                        if !state.filteredItems.isEmpty, !state.runningApps.isEmpty {
+                            Divider()
+                            appPickerRow
+                        }
                         if !state.selectedIDs.isEmpty {
                             Divider()
                             footer
@@ -43,8 +48,28 @@ struct PanelView: View {
                 }
             }
         }
-        .background(.ultraThinMaterial)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .overlay(alignment: .leading) {
+            ResizeHandleArea(edge: .left).frame(width: 12).frame(maxHeight: .infinity)
+        }
+        .overlay(alignment: .trailing) {
+            ResizeHandleArea(edge: .right).frame(width: 12).frame(maxHeight: .infinity)
+        }
+        .overlay(alignment: .bottom) {
+            ResizeHandleArea(edge: .bottom).frame(height: 10).frame(maxWidth: .infinity)
+        }
+        .overlay(alignment: .bottomLeading) {
+            ResizeHandleArea(edge: .bottomLeft).frame(width: 16, height: 16)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            ResizeHandleArea(edge: .bottomRight).frame(width: 16, height: 16)
+        }
         .onChange(of: listNavigationActive, initial: true) { _, active in
             state.listNavigationActive = active
         }
@@ -107,6 +132,7 @@ struct PanelView: View {
                     in: RoundedRectangle(cornerRadius: 7)
                 )
                 .foregroundStyle(activeTab == tab ? Color.accentColor : Color.secondary)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -161,6 +187,7 @@ struct PanelView: View {
             .padding(.trailing, 8)
         }
         .frame(height: 36)
+        .background(WindowDragArea())
     }
 
     @ViewBuilder
@@ -242,7 +269,7 @@ struct PanelView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 10)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private func shortcutSection<Content: View>(
@@ -317,7 +344,7 @@ struct PanelView: View {
     private var itemList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 0) {
+                LazyVStack(spacing: 2) {
                     ForEach(Array(state.filteredItems.enumerated()), id: \.element.id) { index, item in
                         ItemRow(
                             item: item,
@@ -329,14 +356,11 @@ struct PanelView: View {
                         .id(item.id)
                         .contentShape(Rectangle())
                         .onTapGesture { handleTap(item: item) }
-
-                        if index < state.filteredItems.count - 1 {
-                            Divider().padding(.leading, 40)
-                        }
                     }
                 }
+                .padding(.vertical, 6)
             }
-            .frame(maxHeight: 400)
+            .frame(maxHeight: .infinity)
             .onChange(of: state.highlightedIndex) { _, newIndex in
                 if let item = state.filteredItems[safe: newIndex] {
                     withAnimation(.easeInOut(duration: 0.1)) {
@@ -358,7 +382,7 @@ struct PanelView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.vertical, 48)
     }
 
@@ -377,6 +401,40 @@ struct PanelView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+    }
+
+    // MARK: - App Picker
+
+    /// Zeigt die offenen Apps als Icon-Leiste — anklicken fügt den markierten/ausgewählten
+    /// Eintrag gezielt dort ein, statt in die zuletzt aktive App (Standard-Verhalten bei Enter).
+    private var appPickerRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Text("Einfügen in:")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.tertiary)
+
+                ForEach(state.runningApps, id: \.processIdentifier) { app in
+                    Button {
+                        onPasteToApp(app)
+                    } label: {
+                        if let icon = app.icon {
+                            Image(nsImage: icon)
+                                .resizable()
+                                .frame(width: 20, height: 20)
+                        } else {
+                            Image(systemName: "app")
+                                .frame(width: 20, height: 20)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .help(app.localizedName ?? "App")
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+        }
     }
 
     // MARK: - Tap Handling
@@ -407,6 +465,12 @@ struct ItemRow: View, Equatable {
 
     @State private var isHovered = false
 
+    private var rowBackground: Color {
+        if isHighlighted { return Color.accentColor.opacity(0.18) }
+        if isHovered     { return Color.primary.opacity(0.06) }
+        return Color.primary.opacity(0.035)
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             if item.isImage, let data = item.imageData, let nsImg = NSImage(data: data) {
@@ -425,6 +489,7 @@ struct ItemRow: View, Equatable {
 
             Text(item.preview)
                 .font(.system(size: 13))
+                .lineSpacing(2)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -449,14 +514,15 @@ struct ItemRow: View, Equatable {
                     .font(.system(size: 13))
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(isHighlighted ? Color.accentColor.opacity(0.15) : Color.clear)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(rowBackground))
         .overlay(
-            isSelected
-                ? Rectangle().stroke(Color.accentColor.opacity(0.3), lineWidth: 1)
-                : nil
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.accentColor.opacity(0.5) : .clear, lineWidth: 1.5)
         )
+        .shadow(color: .black.opacity(isHighlighted || isHovered ? 0.14 : 0), radius: 6, y: 2)
+        .padding(.horizontal, 6)
         .onHover { isHovered = $0 }
     }
 }

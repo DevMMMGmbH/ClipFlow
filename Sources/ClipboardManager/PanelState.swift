@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 
 final class PanelState: ObservableObject {
     @Published var searchText: String = "" {
@@ -9,6 +10,8 @@ final class PanelState: ObservableObject {
     @Published var highlightedIndex: Int = 0
     /// Wird bei jedem Öffnen erhöht — die Ansicht fokussiert daraufhin die Suche.
     @Published var searchFocusToken: Int = 0
+    /// Offene Apps (für die Einfügen-in-App-Leiste) — wird bei jedem Öffnen neu geladen.
+    @Published var runningApps: [NSRunningApplication] = []
 
     /// Vom PanelView gesetzt: true, solange die Verlaufsliste bedienbar ist
     /// (Verlaufs-Tab sichtbar, nicht eingeklappt, keine Hilfe, kein Overlay-Formular).
@@ -43,9 +46,17 @@ final class PanelState: ObservableObject {
 
     func requestSearchFocus() { searchFocusToken += 1 }
 
+    func refreshRunningApps() {
+        let ownBundleID = Bundle.main.bundleIdentifier
+        runningApps = NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && $0.bundleIdentifier != ownBundleID }
+            .sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }
+    }
+
     func reset() {
         searchText = ""
         selectedIDs = []
         highlightedIndex = 0
+        refreshRunningApps()
     }
 }

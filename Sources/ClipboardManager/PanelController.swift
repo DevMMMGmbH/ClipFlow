@@ -6,9 +6,18 @@ final class PanelController {
     let state = PanelState()
     private var previousApp: NSRunningApplication?
 
-    private let fullHeight: CGFloat  = 480
-    private let titleHeight: CGFloat = 36
-    private let panelWidth: CGFloat  = 520
+    private let defaultWidth: CGFloat  = 520
+    private let defaultHeight: CGFloat = 480
+    private let titleHeight: CGFloat   = 36
+    private let minWidth: CGFloat      = 440
+    private let minHeight: CGFloat     = 360
+
+    private static let frameDefaultsKey = "panelFrame"
+
+    /// Zuletzt bekannte Größe/Position im ausgeklappten Zustand — wird persistiert
+    /// und ist die Grundlage für die Höhe beim Ein-/Ausklappen.
+    private var expandedFrame: NSRect = .zero
+    private var isCollapsed = false
 
     func toggle() {
         panel?.isVisible == true ? close() : open()
@@ -20,7 +29,6 @@ final class PanelController {
         state.requestSearchFocus()
 
         if panel == nil { buildPanel() }
-        centerOnScreen()
         panel?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -35,17 +43,23 @@ final class PanelController {
         let rootView = PanelView(
             state: state,
             onPaste:        { [weak self] items in self?.paste(items: items) },
+            onPasteToApp:   { [weak self] app in self?.pasteSelectionToApp(app) },
             onSnippetPaste: { [weak self] text in self?.pasteText(text) },
             onClose:        { [weak self] in self?.close() },
             onCollapse:     { [weak self] collapsed in self?.setCollapsed(collapsed) }
         )
 
+        let restored = restoredFrame()
+        let initialFrame = restored ?? NSRect(x: 0, y: 0, width: defaultWidth, height: defaultHeight)
+        expandedFrame = initialFrame
+
         let p = ClipboardPanel(
-            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: fullHeight),
-            styleMask: [.borderless, .nonactivatingPanel],
+            contentRect: initialFrame,
+            styleMask: [.borderless, .nonactivatingPanel, .resizable],
             backing: .buffered,
             defer: false
         )
+        p.minSize = NSSize(width: minWidth, height: minHeight)
         p.onEscape = { [weak self] in self?.close() }
 
         // Tastatur-Events auf Panel-Ebene abfangen — vor dem SwiftUI-Responder
@@ -60,27 +74,63 @@ final class PanelController {
         p.level = .floating
         p.isMovableByWindowBackground = true
         p.isReleasedWhenClosed = false
-        p.contentViewController = NSHostingController(rootView: rootView)
+
+        let hosting = NSHostingController(rootView: rootView)
+        // Verhindert, dass NSHostingController die Fenstergröße eigenmächtig an die
+        // "ideale" SwiftUI-Content-Größe anpasst — die Größe bestimmen wir selbst
+        // (initialFrame / Resize-Handles), sonst schrumpft das Panel beim Layout
+        // ungewollt auf die Mindestgröße.
+        hosting.sizingOptions = []
+        p.contentViewController = hosting
         self.panel = p
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification, object: p, queue: .main
+        ) { [weak self] _ in self?.persistFrameIfNeeded() }
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didEndLiveResizeNotification, object: p, queue: .main
+        ) { [weak self] _ in self?.persistFrameIfNeeded() }
+
+        if restored == nil { centerOnScreen() }
+    }
+
+    // MARK: - Größe & Position merken
+
+    private func persistFrameIfNeeded() {
+        guard let panel, !isCollapsed else { return }
+        expandedFrame = panel.frame
+        UserDefaults.standard.set(NSStringFromRect(expandedFrame), forKey: Self.frameDefaultsKey)
+    }
+
+    private func restoredFrame() -> NSRect? {
+        guard let saved = UserDefaults.standard.string(forKey: Self.frameDefaultsKey) else { return nil }
+        let rect = NSRectFromString(saved)
+        guard rect.width >= minWidth, rect.height >= minHeight else { return nil }
+        return rect
     }
 
     // MARK: - Collapse / Expand
 
     func setCollapsed(_ collapsed: Bool) {
-        guard let panel = panel else { return }
-        let targetHeight: CGFloat = collapsed ? titleHeight : fullHeight
+        guard let panel else { return }
+        isCollapsed = collapsed
+
+        let targetHeight: CGFloat = collapsed ? titleHeight : expandedFrame.height
+        let targetWidth: CGFloat  = collapsed ? panel.frame.width : expandedFrame.width
         let currentFrame = panel.frame
         let newFrame = NSRect(
             x: currentFrame.minX,
             y: currentFrame.maxY - targetHeight,
-            width: panelWidth,
+            width: targetWidth,
             height: targetHeight
         )
-        NSAnimationContext.runAnimationGroup { ctx in
+        NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.22
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             panel.animator().setFrame(newFrame, display: true)
-        }
+        }, completionHandler: { [weak self] in
+            if !collapsed { self?.persistFrameIfNeeded() }
+        })
     }
 
     // MARK: - Key Handling
@@ -109,19 +159,26 @@ final class PanelController {
         paste(items: items.isEmpty ? [state.highlightedItem()].compactMap { $0 } : items)
     }
 
+    /// Fügt die aktuelle Auswahl (oder den markierten Eintrag) gezielt in eine
+    /// bestimmte laufende App ein, statt in die zuletzt aktive App.
+    func pasteSelectionToApp(_ app: NSRunningApplication) {
+        let items = state.selectedItems()
+        paste(items: items.isEmpty ? [state.highlightedItem()].compactMap { $0 } : items, target: app)
+    }
+
     // MARK: - Layout
 
     private func centerOnScreen() {
         let screen = NSScreen.main ?? NSScreen.screens[0]
         let f = screen.visibleFrame
-        let x = f.minX + (f.width  - panelWidth)  / 2
-        let y = f.minY + (f.height - fullHeight) / 2 + 60
-        panel?.setFrame(NSRect(x: x, y: y, width: panelWidth, height: fullHeight), display: false)
+        let x = f.minX + (f.width  - defaultWidth)  / 2
+        let y = f.minY + (f.height - defaultHeight) / 2 + 60
+        panel?.setFrame(NSRect(x: x, y: y, width: defaultWidth, height: defaultHeight), display: false)
     }
 
     // MARK: - Paste
 
-    private func paste(items: [ClipboardItem]) {
+    private func paste(items: [ClipboardItem], target: NSRunningApplication? = nil) {
         guard !items.isEmpty else { return }
 
         let pb = NSPasteboard.general
@@ -148,12 +205,53 @@ final class PanelController {
 
         close()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
-            self?.previousApp?.activate()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                Self.simulateCmdV()
+        let targetApp = target ?? previousApp
+        let isExplicitTarget = target != nil
+
+        // Beim Wechsel in eine über die App-Leiste gewählte App (oft länger inaktiv)
+        // braucht die Aktivierung spürbar länger als beim Zurückkehren zur zuletzt
+        // aktiven App — daher hier mehr Zeit einplanen.
+        let activateDelay: TimeInterval = isExplicitTarget ? 0.15 : 0.08
+        let pasteDelay: TimeInterval    = isExplicitTarget ? 0.2  : 0.1
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + activateDelay) {
+            targetApp?.activate()
+            DispatchQueue.main.asyncAfter(deadline: .now() + pasteDelay) {
+                let isBrowser = isExplicitTarget
+                    && targetApp?.bundleIdentifier.map(Self.browserBundleIDs.contains) == true
+                if isBrowser {
+                    // Adressleiste fokussieren, sonst landet der Paste ggf. nirgends
+                    Self.simulateCmdL()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        Self.simulateCmdV()
+                    }
+                } else {
+                    Self.simulateCmdV()
+                }
             }
         }
+    }
+
+    private static let browserBundleIDs: Set<String> = [
+        "com.google.Chrome", "com.google.Chrome.beta",
+        "com.apple.Safari",
+        "company.thebrowser.Browser",     // Arc
+        "com.brave.Browser",
+        "com.microsoft.edgemac",
+        "org.mozilla.firefox",
+        "com.vivaldi.Vivaldi",
+        "com.operasoftware.Opera",
+    ]
+
+    private static func simulateCmdL() {
+        let src = CGEventSource(stateID: .hidSystemState)
+        let l = CGKeyCode(0x25) // kVK_ANSI_L
+        let dn = CGEvent(keyboardEventSource: src, virtualKey: l, keyDown: true)
+        let up = CGEvent(keyboardEventSource: src, virtualKey: l, keyDown: false)
+        dn?.flags = .maskCommand
+        up?.flags = .maskCommand
+        dn?.post(tap: .cghidEventTap)
+        up?.post(tap: .cghidEventTap)
     }
 
     func pasteText(_ text: String) {

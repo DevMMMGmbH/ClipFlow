@@ -19,6 +19,7 @@ struct SnippetView: View {
                 snippetList
             }
         }
+        .frame(maxHeight: .infinity)
         .overlay {
             if showAdd {
                 AddSnippetOverlay(isPresented: $showAdd, existing: nil) { snippet in
@@ -71,7 +72,7 @@ struct SnippetView: View {
 
     private var snippetList: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
+            LazyVStack(spacing: 2) {
                 ForEach(store.filtered(by: searchText)) { snippet in
                     SnippetRow(snippet: snippet) {
                         onPaste(snippet.content)
@@ -80,11 +81,11 @@ struct SnippetView: View {
                     } onDelete: {
                         store.remove(id: snippet.id)
                     }
-                    Divider().padding(.leading, 40)
                 }
             }
+            .padding(.vertical, 6)
         }
-        .frame(maxHeight: 400)
+        .frame(maxHeight: .infinity)
     }
 
     // MARK: - Empty State
@@ -104,7 +105,7 @@ struct SnippetView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.vertical, 48)
     }
 }
@@ -126,18 +127,18 @@ struct SnippetRow: View {
                 .foregroundStyle(Color.accentColor.opacity(0.7))
                 .frame(width: 16, alignment: .center)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(snippet.title)
                         .font(.system(size: 13, weight: .medium))
                         .lineLimit(1)
                     if !snippet.project.isEmpty {
                         Text(snippet.project)
-                            .font(.system(size: 10))
+                            .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
-                            .background(Color.accentColor.opacity(0.8), in: Capsule())
+                            .background(snippet.project.stableAccent.gradient, in: Capsule())
                     }
                 }
                 Text(snippet.content)
@@ -148,8 +149,11 @@ struct SnippetRow: View {
                     HStack(spacing: 4) {
                         ForEach(snippet.tags, id: \.self) { tag in
                             Text("#\(tag)")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.tertiary)
+                                .font(.system(size: 9.5, weight: .medium))
+                                .foregroundStyle(tag.stableAccent)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(tag.stableAccent.opacity(0.14), in: Capsule())
                         }
                     }
                 }
@@ -176,10 +180,16 @@ struct SnippetRow: View {
                 }
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(isHovered ? Color.accentColor.opacity(0.08) : Color.clear)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isHovered ? Color.accentColor.opacity(0.09) : Color.primary.opacity(0.035))
+        )
+        .shadow(color: .black.opacity(isHovered ? 0.12 : 0), radius: 6, y: 2)
         .contentShape(Rectangle())
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
         .onHover { isHovered = $0 }
         .onTapGesture { onPaste() }
     }
@@ -312,7 +322,10 @@ struct AddSnippetOverlay: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 // Header
-                HStack {
+                HStack(spacing: 8) {
+                    Image(systemName: "bookmark.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.accentColor)
                     Text(isEditing ? "Snippet bearbeiten" : "Snippet hinzufügen")
                         .font(.system(size: 13, weight: .semibold))
                     Spacer()
@@ -323,68 +336,74 @@ struct AddSnippetOverlay: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
+                .padding(.horizontal, 18)
+                .padding(.top, 16)
                 .padding(.bottom, 12)
 
                 Divider()
 
-                VStack(alignment: .leading, spacing: 10) {
-                    // Titel
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Titel")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.secondary)
-                        TextField("z.B. SSH Produktiv-Server", text: $title)
-                            .focused($titleFocused)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 13))
-                            .padding(7)
+                VStack(alignment: .leading, spacing: 16) {
+                    formSection(header: "Inhalt") {
+                        // Titel
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Titel")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            TextField("z.B. SSH Produktiv-Server", text: $title)
+                                .focused($titleFocused)
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 13))
+                                .padding(7)
+                                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.1), lineWidth: 1))
+                        }
+
+                        // Inhalt
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Inhalt")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            ZStack(alignment: .topLeading) {
+                                if content.isEmpty {
+                                    Text("ssh user@1.2.3.4 -p 22")
+                                        .font(.system(size: 13, design: .monospaced))
+                                        .foregroundStyle(.tertiary)
+                                        .padding(8)
+                                        .allowsHitTesting(false)
+                                }
+                                TextEditor(text: $content)
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .frame(minHeight: 70, maxHeight: 140)
+                                    .scrollContentBackground(.hidden)
+                                    .padding(4)
+                            }
                             .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
                             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.1), lineWidth: 1))
-                    }
-
-                    // Inhalt
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Inhalt")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.secondary)
-                        ZStack(alignment: .topLeading) {
-                            if content.isEmpty {
-                                Text("ssh user@1.2.3.4 -p 22")
-                                    .font(.system(size: 13, design: .monospaced))
-                                    .foregroundStyle(.tertiary)
-                                    .padding(8)
-                                    .allowsHitTesting(false)
-                            }
-                            TextEditor(text: $content)
-                                .font(.system(size: 13, design: .monospaced))
-                                .frame(minHeight: 60, maxHeight: 120)
-                                .scrollContentBackground(.hidden)
-                                .padding(4)
                         }
-                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.1), lineWidth: 1))
                     }
 
-                    // Projekt mit Autocomplete
-                    AutocompleteField(
-                        label: "Projekt",
-                        placeholder: "z.B. misgin.local",
-                        suggestions: allProjects,
-                        text: $project
-                    )
+                    Divider()
 
-                    // Tags mit Autocomplete
-                    AutocompleteField(
-                        label: "Tags",
-                        placeholder: "ssh, server, prod  (kommagetrennt)",
-                        suggestions: allTags,
-                        text: $tags,
-                        isTagMode: true
-                    )
+                    formSection(header: "Organisation") {
+                        // Projekt mit Autocomplete
+                        AutocompleteField(
+                            label: "Projekt",
+                            placeholder: "z.B. misgin.local",
+                            suggestions: allProjects,
+                            text: $project
+                        )
+
+                        // Tags mit Autocomplete
+                        AutocompleteField(
+                            label: "Tags",
+                            placeholder: "ssh, server, prod  (kommagetrennt)",
+                            suggestions: allTags,
+                            text: $tags,
+                            isTagMode: true
+                        )
+                    }
                 }
-                .padding(16)
+                .padding(18)
 
                 Divider()
 
@@ -394,13 +413,15 @@ struct AddSnippetOverlay: View {
                     Button(isEditing ? "Speichern" : "Hinzufügen") { save() }
                         .buttonStyle(.borderedProminent)
                         .disabled(title.isEmpty || content.isEmpty)
+                        .keyboardShortcut(.defaultAction)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
             }
+            .frame(width: 340)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
             .shadow(color: .black.opacity(0.25), radius: 16, y: 4)
-            .padding(24)
+            .padding(20)
             .onAppear {
                 if let s = existing {
                     title   = s.title
@@ -412,6 +433,19 @@ struct AddSnippetOverlay: View {
                     titleFocused = true
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func formSection<Content: View>(
+        header: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(header.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.tertiary)
+            content()
         }
     }
 
