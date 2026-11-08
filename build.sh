@@ -2,7 +2,7 @@
 set -e
 
 echo "🔨 Kompiliere ClipFlow..."
-swift build -c release
+swift build --build-system native -c release
 
 APP="ClipFlow.app"
 BIN=".build/release/ClipFlow"

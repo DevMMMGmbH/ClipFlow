@@ -80,6 +80,23 @@ cd paste_misgin.local
 
 Voraussetzung: Xcode Command Line Tools (`xcode-select --install`)
 
+**Falls kein volles Xcode installiert ist** (nur Command Line Tools): Neuere
+macOS-SDKs definieren `@State`/`@Binding` etc. als SwiftUI-Macro, dessen
+Compiler-Plugin nur mit dem vollen Xcode.app mitgeliefert wird. Ohne Xcode
+schlägt der Build mit `plugin for module 'SwiftUIMacros' not found` fehl.
+
+Workaround: mit einer älteren, in den Command Line Tools enthaltenen SDK
+bauen, in der `State` noch als klassischer Property-Wrapper (ohne Macro)
+definiert ist:
+
+```bash
+ls /Library/Developer/CommandLineTools/SDKs/   # verfügbare SDKs anzeigen
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk ./build_dmg.sh
+```
+
+(Die genaue SDK-Version kann je nach installierten Command Line Tools
+abweichen — einfach eine ältere als die aktuell aktive wählen.)
+
 ---
 
 ## Changelog

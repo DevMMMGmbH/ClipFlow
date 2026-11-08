@@ -26,8 +26,8 @@ DMG_PATH="${SCRIPT_DIR}/${DMG_NAME}"
 echo "🔨  Baue ${APP_NAME} ${VERSION} (Universal Binary) …"
 cd "$SCRIPT_DIR"
 
-swift build -c release --arch arm64  2>&1
-swift build -c release --arch x86_64 2>&1
+swift build --build-system native -c release --arch arm64  2>&1
+swift build --build-system native -c release --arch x86_64 2>&1
 
 ARM_BIN="${SCRIPT_DIR}/.build/arm64-apple-macosx/release/${APP_NAME}"
 X86_BIN="${SCRIPT_DIR}/.build/x86_64-apple-macosx/release/${APP_NAME}"
